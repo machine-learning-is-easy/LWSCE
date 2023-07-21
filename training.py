@@ -7,9 +7,8 @@ import numpy as np
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
-from loss.partial_loss import MaskedCrossEntropyLoss, AdaptiveMaskedCrossEntropyLoss
-from model_define.defined_model import KMNISTNet, CIFARNet
-# from model_define.hugging_face_vit import ViTForImageClassification
+from loss.partial_loss import LabelWiseSignificanceCrossEntropy
+from model_define.defined_model import CIFARNet
 import torchvision.models as models
 import os
 import pandas as pd
@@ -95,137 +94,16 @@ elif args.dataset == "CIFAR100":
     # net = ViTForImageClassification(num_labels=dataclasses_num)
     net = net.to(device)
 
-elif args.dataset == 'IMAGENET':
-
-    trainset = torchvision.datasets.ImageNet(root=data_path, split="train")
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                              shuffle=True, num_workers=0)
-
-    testset = torchvision.datasets.EMNIST(root=data_path, split="mnist")
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                             shuffle=False, num_workers=0)
-
-elif args.dataset == "EMNIST":
-    transform = transforms.Compose(
-        [transforms.ToTensor(), torchvision.transforms.Normalize(
-                                 (0.1307,), (0.3081,))])
-
-    trainset = torchvision.datasets.EMNIST(root=data_path, train=True, split="mnist",
-                                             download=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                              shuffle=True, num_workers=0)
-
-    testset = torchvision.datasets.EMNIST(root=data_path, train=False, split="mnist",
-                                             download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                             shuffle=False, num_workers=0)
-
-    # define model
-    num_channel = 1
-    image_size = trainset.data.shape[1]
-    dataclasses_num = len(trainset.classes)
-
-    net = KMNISTNet(num_class=dataclasses_num, num_channel=num_channel)
-    net = net.to(device)
-
-elif args.dataset == "FashionMNIST":
-    transform = transforms.Compose(
-        [transforms.ToTensor(), torchvision.transforms.Normalize(
-                                 (0.1307,), (0.3081,))])
-    trainset = torchvision.datasets.FashionMNIST(root=data_path, train=True,
-                                           download=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                              shuffle=True, num_workers=0)
-
-    testset = torchvision.datasets.FashionMNIST(root=data_path, train=False,
-                                          download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                             shuffle=False, num_workers=0)
-
-    # define model
-    num_channel = 1
-    image_size = trainset.data.shape[1]
-    dataclasses_num = len(trainset.classes)
-
-    net = KMNISTNet(num_class=dataclasses_num, num_channel=num_channel)
-    net = net.to(device)
-
-elif args.dataset == "MNIST":
-    transform = transforms.Compose(
-        [transforms.ToTensor(), torchvision.transforms.Normalize(
-                                 (0.1307,), (0.3081,))])
-    trainset = torchvision.datasets.MNIST(root=data_path, train=True,
-                                           download=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                              shuffle=True, num_workers=0)
-
-    testset = torchvision.datasets.FashionMNIST(root=data_path, train=False,
-                                          download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                             shuffle=False, num_workers=0)
-
-    # define model
-    num_channel = 1
-    image_size = trainset.data.shape[1]
-    dataclasses_num = len(trainset.classes)
-
-    net = KMNISTNet(num_class=dataclasses_num, num_channel=num_channel)
-    net = net.to(device)
-
-elif args.dataset == "KMNIST":
-    transform = transforms.Compose(
-        [transforms.ToTensor(), torchvision.transforms.Normalize(
-                                 (0.1307,), (0.3081,))])
-    trainset = torchvision.datasets.KMNIST(root=data_path, train=True,
-                                           download=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                              shuffle=True, num_workers=0)
-
-    testset = torchvision.datasets.KMNIST(root=data_path, train=False,
-                                          download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                             shuffle=False, num_workers=0)
-
-    # define model
-    num_channel = 1
-    image_size = trainset.data.shape[1]
-    dataclasses_num = len(trainset.classes)
-
-    net = KMNISTNet(num_class=dataclasses_num, num_channel=num_channel)
-    net = net.to(device)
-
-elif args.dataset == "QMNIST":
-    transform = transforms.Compose(
-        [transforms.ToTensor(), torchvision.transforms.Normalize(
-                                 (0.1307,), (0.3081,))])
-    trainset = torchvision.datasets.QMNIST(root=data_path, train=True,
-                                           download=True, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                              shuffle=True, num_workers=0)
-
-    testset = torchvision.datasets.QMNIST(root=data_path, train=False,
-                                          download=True, transform=transform)
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                             shuffle=False, num_workers=0)
-
-    # define model
-    num_channel = 1
-    image_size = trainset.data.shape[1]
-    dataclasses_num = len(trainset.classes)
-    net = KMNISTNet(num_class=dataclasses_num, num_channel=num_channel)
-    net = net.to(device)
-
 else:
     raise Exception("Unable to support the data {}".format(args.dataset))
 
 if args.lossfunction == "LWSCE":
-    criterion = MaskedCrossEntropyLoss(alpha=0.2, num_class=dataclasses_num, device=device)
+    criterion = LabelWiseSignificanceCrossEntropy(alpha=0.2, num_class=dataclasses_num, device=device)
 elif args.lossfunction == 'CROSSENTROPY':
     criterion = nn.CrossEntropyLoss()
 elif args.lossfunction == 'LABELSMOOTHING':
     criterion = nn.CrossEntropyLoss(label_smoothing=0.2)
-elif args.lossfunction == "ALWSCE":
-    criterion = AdaptiveMaskedCrossEntropyLoss(alpha=0.2, num_class=dataclasses_num, device=device)
+
 else:
     raise Exception("Unaccept loss function {}".format(args.lossfunction))
 
@@ -244,13 +122,8 @@ def defineopt(model):
         optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=0.5, weight_decay=0.2)
     elif args.opt_alg == "ADAM":
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
-    # elif args.opt_alg == "RADAM":
-    #     optimizer = optim.(net.parameters(), lr=1e-4)
     elif args.opt_alg == "RMSprop":
         optimizer = optim.RMSprop(model.parameters(), lr=args.lr)
-    elif args.opt_alg == "LWADAM":
-        from opt.customeropt import LWADAM
-        optimizer = LWADAM(model.parameters(), lr=args.lr)
     else:
         raise Exception("Not accept optimizer of {}".args.opt_alg)
     return optimizer
@@ -319,7 +192,7 @@ for t in range(10): # train model 10 times
         acc.append([epoch, acc_epoch, round(running_loss, 2), L2])
         print("{} epoch acc is {}, L2 is {}".format(epoch, acc_epoch, L2))
     print('Finished Training')
-    result_file = os.path.join(os.path.join(current_folder, 'result', 'result_direct_{}_{}_{}'.format(args.dataset, args.opt_alg, args.lossfunction), "{}.csv".format(str(t))))
+    result_file = os.path.join(os.path.join(current_folder, 'result', 'result_{}_{}_{}'.format(args.dataset, args.opt_alg, args.lossfunction), "{}.csv".format(str(t))))
     if not os.path.exists(os.path.dirname(result_file)):
         os.makedirs(os.path.dirname(result_file))
     pd.DataFrame(acc).to_csv(result_file, header=["epoch", "training_acc", "training_loss", "L2"], index=False)
