@@ -3,13 +3,14 @@ import torch
 import torchvision
 import torchvision.transforms as transforms
 # import matplotlib.pyplot as plt
-import numpy as np
+from torch.utils.data import random_split
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
-from loss.partial_loss import MaskedCrossEntropyLoss, AdaptiveMaskedCrossEntropyLoss
-from model_define.defined_model import KMNISTNet, CIFARNet
-# from model_define.hugging_face_vit import ViTForImageClassification
+from loss.partial_loss import LabelWiseSignificanceCrossEntropy, AdaptiveMaskedCrossEntropyLoss
+from model_define.defined_model import KMNISTNet, CIFARNet, CIFARNet_Infer, IMAGENET
+from cv.define_model import ViTForImageClassification
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torchvision.models as models
 import os
 import pandas as pd
@@ -17,8 +18,12 @@ torch.manual_seed(1000)
 torch.cuda.manual_seed(1000)
 import random
 random.seed(1000)
-
 import argparse
+
+TINY_IMAGENET_DATASET = 'Maysee/tiny-imagenet'
+# IMAGENET1k_DATASET = 'imagenet-1k'
+POKEMON_DATASET = "keremberke/pokemon-classification"
+OXFORD_FLOWER_DATASET = "nelorth/oxford-flowers"
 
 model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
@@ -51,7 +56,14 @@ batch_size = 128
 
 current_folder = os.path.dirname(os.path.abspath(__file__))
 data_path = os.path.join(current_folder, 'data')
+
+def reinitialization_model(model):
+    for layer in model.children():
+        if hasattr(layer, 'reset_parameters'):
+            layer.reset_parameters()
+
 if args.dataset == "CIFAR10":
+
     transform = transforms.Compose(
         [transforms.ToTensor(),
          transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
@@ -74,9 +86,7 @@ if args.dataset == "CIFAR10":
 
 
 elif args.dataset == "CIFAR100":
-    transform = transforms.Compose(
-        [transforms.ToTensor(),
-         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+    transform = transforms.Compose([transforms.ToTensor()])
 
     trainset = torchvision.datasets.CIFAR100(root=data_path, train=True,
                                             download=True, transform=transform)
@@ -91,19 +101,34 @@ elif args.dataset == "CIFAR100":
     image_size = trainset.data.shape[1]
     dataclasses_num = len(trainset.classes)
 
+    # net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
     net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
     # net = ViTForImageClassification(num_labels=dataclasses_num)
     net = net.to(device)
 
 elif args.dataset == 'IMAGENET':
+    from cv.load_data import load_imagenet_dataset
+    trainloader, testloader, dataclasses_num, image_size = load_imagenet_dataset(TINY_IMAGENET_DATASET)
+    # net = ViTForImageClassification(num_labels=dataclasses_num, image_size=image_size)
+    net = IMAGENET(num_class=dataclasses_num, num_channel=3)
+    # reinitialization_model(net)
+    net = net.to(device)
 
-    trainset = torchvision.datasets.ImageNet(root=data_path, split="train")
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size=batch_size,
-                                              shuffle=True, num_workers=0)
+elif args.dataset == 'POKEMON':
+    from cv.load_data import load_pokemon_dataset
+    trainloader, testloader, dataclasses_num, image_size = load_pokemon_dataset(POKEMON_DATASET)
+    net = ViTForImageClassification(num_labels=dataclasses_num, image_size=image_size)
+    # net = IMAGENET(num_class=dataclasses_num, num_channel=3)
+    # reinitialization_model(net)
+    net = net.to(device)
 
-    testset = torchvision.datasets.EMNIST(root=data_path, split="mnist")
-    testloader = torch.utils.data.DataLoader(testset, batch_size=batch_size,
-                                             shuffle=False, num_workers=0)
+elif args.dataset == 'OXFORDFLOWER':
+    from cv.load_data import load_imagenet_dataset
+    trainloader, testloader, dataclasses_num, image_size = load_imagenet_dataset(OXFORD_FLOWER_DATASET)
+    # config = ViTConfig(image_size=64, num_labels=dataclasses_num)
+    net = ViTForImageClassification(num_labels=dataclasses_num, image_size=image_size)
+    # net = IMAGENET(num_class=dataclasses_num, num_channel=3)
+    net = net.to(device)
 
 elif args.dataset == "EMNIST":
     transform = transforms.Compose(
@@ -172,6 +197,7 @@ elif args.dataset == "MNIST":
     net = KMNISTNet(num_class=dataclasses_num, num_channel=num_channel)
     net = net.to(device)
 
+
 elif args.dataset == "KMNIST":
     transform = transforms.Compose(
         [transforms.ToTensor(), torchvision.transforms.Normalize(
@@ -214,18 +240,19 @@ elif args.dataset == "QMNIST":
     dataclasses_num = len(trainset.classes)
     net = KMNISTNet(num_class=dataclasses_num, num_channel=num_channel)
     net = net.to(device)
-
 else:
     raise Exception("Unable to support the data {}".format(args.dataset))
 
 if args.lossfunction == "LWSCE":
-    criterion = MaskedCrossEntropyLoss(alpha=0.2, num_class=dataclasses_num, device=device)
+    criterion = LabelWiseSignificanceCrossEntropy(alpha=0.2, num_class=dataclasses_num, device=device)
 elif args.lossfunction == 'CROSSENTROPY':
     criterion = nn.CrossEntropyLoss()
 elif args.lossfunction == 'LABELSMOOTHING':
     criterion = nn.CrossEntropyLoss(label_smoothing=0.2)
 elif args.lossfunction == "ALWSCE":
     criterion = AdaptiveMaskedCrossEntropyLoss(alpha=0.2, num_class=dataclasses_num, device=device)
+elif args.lossfunction == "LWSCE+LS":
+    criterion = AdaptiveMaskedCrossEntropyLoss(alpha=0.2, num_class=dataclasses_num, label_smoothing=0.2, device=device)
 else:
     raise Exception("Unaccept loss function {}".format(args.lossfunction))
 
@@ -240,7 +267,9 @@ else:
 # from model_define.hugging_face_vit import ViTForImageClassification
 
 def defineopt(model):
-    if args.opt_alg == "ADAM":
+    if args.opt_alg == 'SGD':
+        optimizer = optim.SGD(model.parameters(), lr=args.lr)
+    elif args.opt_alg == "ADAM":
         optimizer = optim.Adam(model.parameters(), lr=args.lr)
     elif args.opt_alg == "RMSprop":
         optimizer = optim.RMSprop(model.parameters(), lr=args.lr)
@@ -248,12 +277,13 @@ def defineopt(model):
         optimizer = optim.RAdam(model.parameters(), lr=args.lr)
     elif args.opt_alg == "ADADELTA":
         optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
-    elif args.opt_alg == "LWADAM":
-        optimizer = optim.AdamW(model.parameters(), lr=args.lr)
     else:
         raise Exception("Not accept optimizer of {}".args.opt_alg)
     return optimizer
 optimizer = defineopt(net)
+def define_scheduler(optimizer):
+    return ReduceLROnPlateau(optimizer, patience=10)
+scheduler = define_scheduler(optimizer)
 ########################################################################
 def run_test(model_path):
     correct = 0
@@ -262,12 +292,21 @@ def run_test(model_path):
     # since we're not training, we don't need to calculate the gradients for our outputs
     with torch.no_grad():
         for data in testloader:
-            images, labels = data
             # calculate outputs by running images through the network
-            images = images.to(device)
+            if "IMAGENET" in args.dataset:
+                images = data["image"].to(device)
+                labels = data["label"].to(device)
+            elif args.dataset == 'POKEMON':
+                images = data["image"].to(device)
+                labels = data["labels"].to(device)
+            else:
+                images, labels = data
+                images = images.to(device)
+                labels = labels.to(device)
+
             outputs = net(images)
             # the class with the highest energy is what we choose as prediction
-            _, predicted = torch.max(outputs.data, 1)
+            predicted = torch.argmax(outputs.data, 1)
             total += labels.size(0)
             labels = labels.to(device)
             correct += (predicted == labels).sum().item()
@@ -283,25 +322,34 @@ def L2_reg(parameters):
 def save_model(net, model_path):
     torch.save(net.state_dict(), model_path)
 
-def reinitialization_model(model):
-    for layer in model.children():
-        if hasattr(layer, 'reset_parameters'):
-            layer.reset_parameters()
+
 # 4. Train the network
 for t in range(10): # train model 10 times
     acc = []
-    for epoch in range(int(args.epoch)):  # loop over the dataset multiple times
+    for epoch in range(1,int(args.epoch)):  # loop over the dataset multiple times
         running_loss = 0.0
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
-            inputs, labels = data
+
             # forward + backward + optimize
-            inputs = inputs.to(device)
-            labels = labels.to(device)
+            if "IMAGENET" in args.dataset:
+                inputs = data["image"].to(device)
+                labels = data["label"].to(device)
+            elif args.dataset == 'POKEMON':
+                inputs = data["image"].to(device)
+                labels = data["labels"].to(device)
+            else:
+                inputs, labels = data
+                inputs = inputs.to(device)
+                labels = labels.to(device)
             try:
                 outputs = net(inputs)
             except Exception as ex:
-                outputs = net(inputs)
+                raise Exception("Inference model encounter Exceptions")
+            if args.lossfunction == 'FOCAL':
+                class_num = inputs.size()[-1]
+                labels = torch.nn.functional.one_hot(labels, num_classes=class_num)
+
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -313,22 +361,43 @@ for t in range(10): # train model 10 times
         model_path = os.path.join(current_folder, 'model', '{}_{}_{}_net.pth'.format(args.dataset, args.opt_alg, args.lossfunction))
         save_model(net, model_path)
         acc_epoch = run_test(model_path)
+        # scheduler.step(metrics=acc_epoch)
         acc_epoch = round(acc_epoch, 2)
         L2 = L2_reg(net.parameters())
         acc.append([epoch, acc_epoch, round(running_loss, 2), L2])
         print("{} epoch acc is {}, L2 is {}".format(epoch, acc_epoch, L2))
     print('Finished Training')
-    result_file = os.path.join(os.path.join(current_folder, 'result', 'result_direct_{}_{}_{}'.format(args.dataset, args.opt_alg, args.lossfunction), "{}.csv".format(str(t))))
+    result_file = os.path.join(os.path.join(current_folder, 'result', '{}_{}_{}_result'.format(args.dataset, args.opt_alg, args.lossfunction), "{}.csv".format(str(t))))
     if not os.path.exists(os.path.dirname(result_file)):
         os.makedirs(os.path.dirname(result_file))
     pd.DataFrame(acc).to_csv(result_file, header=["epoch", "training_acc", "training_loss", "L2"], index=False)
-    del net
-    del optimizer
-    if 'MNIST' in args.dataset:
+
+    # reinitialize the model parameters and optimizer
+    if isinstance(net, KMNISTNet):
+        del net
+        del optimizer
         net = KMNISTNet(num_class=dataclasses_num, num_channel=num_channel)
         net = net.to(device)
         optimizer = defineopt(net)
-    else:
+        scheduler = define_scheduler(optimizer)
+    elif isinstance(net, CIFARNet):
+        del net
+        del optimizer
         net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
         net = net.to(device)
         optimizer = defineopt(net)
+        scheduler = define_scheduler(optimizer)
+    elif isinstance(net, ViTForImageClassification):
+        del net
+        del optimizer
+        net = ViTForImageClassification(num_labels=dataclasses_num, image_size=image_size)
+        net = net.to(device)
+        optimizer = defineopt(net)
+        scheduler = define_scheduler(optimizer)
+    elif isinstance(net, IMAGENET):
+        del net
+        del optimizer
+        net = IMAGENET(num_class=dataclasses_num, num_channel=3)
+        net = net.to(device)
+        optimizer = defineopt(net)
+        scheduler = define_scheduler(optimizer)
