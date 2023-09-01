@@ -7,9 +7,8 @@ from torch.utils.data import random_split
 import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
-from loss.partial_loss import LabelWiseSignificanceCrossEntropy, AdaptiveMaskedCrossEntropyLoss
-from model_define.defined_model import KMNISTNet, CIFARNet, CIFARNet_Infer, IMAGENET
-from cv.define_model import ViTForImageClassification
+from loss.partial_loss import LabelWiseSignificanceCrossEntropy
+from model_define.defined_model import KMNISTNet, CIFARNet
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torchvision.models as models
 import os

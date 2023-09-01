@@ -1,9 +1,8 @@
 import torch.nn as nn
 import torch.nn.functional
-import math
 from torch import Tensor
 from typing import Optional
-class MaskedCrossEntropyLoss(nn.CrossEntropyLoss):
+class LabelWiseSignificanceCrossEntropy(nn.CrossEntropyLoss):
     r"""
     Examples::
 
@@ -29,14 +28,9 @@ class MaskedCrossEntropyLoss(nn.CrossEntropyLoss):
                  device=None, num_class: int = 10, input_type="prob") -> None:
         super().__init__(weight, size_average, ignore_index, reduce, reduction, label_smoothing=label_smoothing)
         P0 = alpha/num_class
-        if input_type == "prob":
-            self.expectation = torch.tensor(2 * P0)
-            self.zero = torch.tensor(0.0)
-        elif input_type == "log":
-            self.expectation = torch.tensor(math.log(2*P0))
-            self.zero = torch.tensor(math.log(1e-100))
-        else:
-            raise Exception("Unable to support input_type value {}".format(input_type))
+        self.zero = torch.tensor(0.0)
+        self.expectation = torch.tensor(2 * P0)
+        self.input_type = input_type
 
         if device:
             self.expectation = self.expectation.to(device)
@@ -50,6 +44,9 @@ class MaskedCrossEntropyLoss(nn.CrossEntropyLoss):
             target_digit = torch.nn.functional.one_hot(target, num_classes=class_num)
         else:
             target_digit = target
+
+        if self.input_type != 'prob':
+            input = torch.softmax(input, dim=-1)
 
         target_mask_0 = torch.logical_not(torch.logical_and(target_digit < 0.5, input.le(self.expectation)))
         input_new = torch.where(target_mask_0, input, self.zero)
