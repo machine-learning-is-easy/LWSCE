@@ -247,17 +247,5 @@ for t in range(10): # train model 10 times
         net = net.to(device)
         optimizer = defineopt(net)
         scheduler = define_scheduler(optimizer)
-    elif isinstance(net, ViTForImageClassification):
-        del net
-        del optimizer
-        net = ViTForImageClassification(num_labels=dataclasses_num, image_size=image_size)
-        net = net.to(device)
-        optimizer = defineopt(net)
-        scheduler = define_scheduler(optimizer)
-    elif isinstance(net, IMAGENET):
-        del net
-        del optimizer
-        net = IMAGENET(num_class=dataclasses_num, num_channel=3)
-        net = net.to(device)
-        optimizer = defineopt(net)
-        scheduler = define_scheduler(optimizer)
+    else:
+        raise Exception("Not support model type")
