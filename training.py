@@ -32,12 +32,13 @@ model_names = sorted(name for name in models.__dict__
                      if name.islower() and not name.startswith("__")
                      and callable(models.__dict__[name]))
 parser = argparse.ArgumentParser(description='Train Model')
-parser.add_argument('--epoch', '-e', dest='epoch', default=100, help='epoch')
+parser.add_argument('--epoch', '-e', dest='epoch', default=50, help='epoch')
 parser.add_argument('--dataset', '-d', dest='dataset', default="CIFAR10", help='dataset', required=False)
 parser.add_argument('--opt_alg', '-a', dest='opt_alg', default="SGD", help='opt_alg', required=False)
-parser.add_argument('--lossfunction', '-l', dest='lossfunction', default="LWSCE", help='lossfunction', required=False)
+parser.add_argument('--lossfunction', '-l', dest='lossfunction', default="LWSCE", help='LWSCE|CROSSENTROPY|LABELSMOOTHING', 
+                    required=False)
 parser.add_argument('--lr', '-lr', dest='lr', type=float, default=1e-4, help='learning rate')
-parser.add_argument('--model', '-m', dest='model', default="CIFARNet", help='model', required=False)
+parser.add_argument('--model', '-m', dest='model', default="googlenet", help='model', required="googlenet|resnet|vit")
 
 
 args = parser.parse_args()
