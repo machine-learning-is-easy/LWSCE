@@ -12,6 +12,10 @@ from model_define.defined_model import KMNISTNet, CIFARNet
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torchvision.models as models
 import os
+from model_define.googlenet import googlenet
+from model_define.resnet import resnet18
+from model_define.vit import Vit
+from model_define.vgg import vgg11_bn
 import pandas as pd
 torch.manual_seed(1000)
 torch.cuda.manual_seed(1000)
@@ -62,6 +66,21 @@ def reinitialization_model(model):
         if hasattr(layer, 'reset_parameters'):
             layer.reset_parameters()
 
+
+def define_model(model_type, num_class):
+    if model_type == "googlenet":
+        net = googlenet(num_class)
+    elif model_type == "vit":
+        from vit.vit import ViTForImageClassification
+        net = ViTForImageClassification(num_labels=num_class, image_size=image_size)
+    elif model_type == 'resnet':
+        from resnet.model import ResNet
+        net = resnet18(num_class)
+    else:
+        raise Exception("Unable to support model type of {}".model_type)
+
+    return net
+
 if args.dataset == "CIFAR10":
 
     transform = transforms.Compose(
@@ -81,20 +100,6 @@ if args.dataset == "CIFAR10":
     image_size = trainset.data.shape[1]
     dataclasses_num = len(trainset.classes)
 
-    if args.model == "CIFARNet":
-        net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
-    elif args.model == "vit":
-        from vit.vit import ViTForImageClassification
-        net = ViTForImageClassification(num_labels=dataclasses_num, image_size=image_size)
-    elif args.model == 'resnet':
-        from resnet.model import ResNet
-        net = ResNet(dataclasses_num)
-    else:
-        raise Exception("Unable to support model type of {}".args.model)
-
-    net = net.to(device)
-
-
 elif args.dataset == "CIFAR100":
     transform = transforms.Compose([transforms.ToTensor()])
 
@@ -110,21 +115,11 @@ elif args.dataset == "CIFAR100":
     num_channel = 3
     image_size = trainset.data.shape[1]
     dataclasses_num = len(trainset.classes)
-
-    if args.model == "CIFARNet":
-        net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
-    elif args.model == "vit":
-        from vit.vit import ViTForImageClassification
-        net = ViTForImageClassification(num_labels=dataclasses_num, image_size=image_size)
-    elif args.model == 'resnet':
-        from resnet.model import ResNet
-        net = ResNet(dataclasses_num)
-    else:
-        raise Exception("Unable to support model type of {}".args.model)
-
-    net = net.to(device)
 else:
     raise Exception("Unable to support the data {}".format(args.dataset))
+
+net = define_model(args.model, dataclasses_num)
+net = net.to(device)
 
 
 if args.lossfunction == "LWSCE":
