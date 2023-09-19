@@ -33,6 +33,7 @@ parser.add_argument('--dataset', '-d', dest='dataset', default="CIFAR10", help='
 parser.add_argument('--opt_alg', '-a', dest='opt_alg', default="SGD", help='opt_alg', required=False)
 parser.add_argument('--lossfunction', '-l', dest='lossfunction', default="LWSCE", help='lossfunction', required=False)
 parser.add_argument('--lr', '-lr', dest='lr', type=float, default=1e-4, help='learning rate')
+parser.add_argument('--model', '-m', dest='model', default="CIFARNet", help='model', required=False)
 
 
 args = parser.parse_args()
@@ -80,7 +81,17 @@ if args.dataset == "CIFAR10":
     image_size = trainset.data.shape[1]
     dataclasses_num = len(trainset.classes)
 
-    net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
+    if args.model == "CIFARNet":
+        net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
+    elif args.model == "vit":
+        from vit.vit import ViTForImageClassification
+        net = ViTForImageClassification(num_labels=dataclasses_num, image_size=image_size)
+    elif args.model == 'resnet':
+        from resnet.model import ResNet
+        net = ResNet(dataclasses_num)
+    else:
+        raise Exception("Unable to support model type of {}".args.model)
+
     net = net.to(device)
 
 
@@ -100,12 +111,21 @@ elif args.dataset == "CIFAR100":
     image_size = trainset.data.shape[1]
     dataclasses_num = len(trainset.classes)
 
-    # net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
-    net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
-    # net = ViTForImageClassification(num_labels=dataclasses_num)
+    if args.model == "CIFARNet":
+        net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
+    elif args.model == "vit":
+        from vit.vit import ViTForImageClassification
+        net = ViTForImageClassification(num_labels=dataclasses_num, image_size=image_size)
+    elif args.model == 'resnet':
+        from resnet.model import ResNet
+        net = ResNet(dataclasses_num)
+    else:
+        raise Exception("Unable to support model type of {}".args.model)
+
     net = net.to(device)
 else:
     raise Exception("Unable to support the data {}".format(args.dataset))
+
 
 if args.lossfunction == "LWSCE":
     criterion = LabelWiseSignificanceCrossEntropy(alpha=0.2, num_class=dataclasses_num, device=device)
@@ -153,16 +173,9 @@ def run_test(model_path):
     with torch.no_grad():
         for data in testloader:
             # calculate outputs by running images through the network
-            if "IMAGENET" in args.dataset:
-                images = data["image"].to(device)
-                labels = data["label"].to(device)
-            elif args.dataset == 'POKEMON':
-                images = data["image"].to(device)
-                labels = data["labels"].to(device)
-            else:
-                images, labels = data
-                images = images.to(device)
-                labels = labels.to(device)
+            images, labels = data
+            images = images.to(device)
+            labels = labels.to(device)
 
             outputs = net(images)
             # the class with the highest energy is what we choose as prediction
@@ -191,24 +204,13 @@ for t in range(10): # train model 10 times
         for i, data in enumerate(trainloader, 0):
             # get the inputs; data is a list of [inputs, labels]
 
-            # forward + backward + optimize
-            if "IMAGENET" in args.dataset:
-                inputs = data["image"].to(device)
-                labels = data["label"].to(device)
-            elif args.dataset == 'POKEMON':
-                inputs = data["image"].to(device)
-                labels = data["labels"].to(device)
-            else:
-                inputs, labels = data
-                inputs = inputs.to(device)
-                labels = labels.to(device)
+            inputs, labels = data
+            inputs = inputs.to(device)
+            labels = labels.to(device)
             try:
                 outputs = net(inputs)
             except Exception as ex:
                 raise Exception("Inference model encounter Exceptions")
-            if args.lossfunction == 'FOCAL':
-                class_num = inputs.size()[-1]
-                labels = torch.nn.functional.one_hot(labels, num_classes=class_num)
 
             loss = criterion(outputs, labels)
             loss.backward()
@@ -238,14 +240,24 @@ for t in range(10): # train model 10 times
         del optimizer
         net = KMNISTNet(num_class=dataclasses_num, num_channel=num_channel)
         net = net.to(device)
-        optimizer = defineopt(net)
-        scheduler = define_scheduler(optimizer)
     elif isinstance(net, CIFARNet):
         del net
         del optimizer
         net = CIFARNet(num_class=dataclasses_num, num_channel=num_channel)
         net = net.to(device)
-        optimizer = defineopt(net)
-        scheduler = define_scheduler(optimizer)
+    elif isinstance(net, ResNet):
+        del net
+        del optimizer
+        net = ResNet(dataclasses_num)
+        net = net.to(device)
+    elif isinstance(net, ViTForImageClassification):
+        del net
+        del optimizer
+        net =ViTForImageClassification(num_labels=dataclasses_num, image_size=image_size)
+        net = net.to(device)
+
     else:
         raise Exception("Not support model type")
+
+    optimizer = defineopt(net)
+    scheduler = define_scheduler(optimizer)
