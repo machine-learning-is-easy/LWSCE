@@ -36,7 +36,6 @@ class LabelWiseSignificanceCrossEntropy(nn.CrossEntropyLoss):
             self.expectation = self.expectation.to(device)
             self.zero = self.zero.to(device)
 
-
     def forward(self, input: Tensor, target: Tensor) -> Tensor:
         # get right input and wrong input following
         if len(input.size()) > len(target.size()):
@@ -46,7 +45,10 @@ class LabelWiseSignificanceCrossEntropy(nn.CrossEntropyLoss):
             target_digit = target
 
         if self.input_type != 'prob':
-            input = torch.softmax(input, dim=-1)
+            _batch_max = torch.max(input)
+            _batch_min = torch.min(input)
+            self.expectation = (_batch_max - _batch_min) * 0.2 + _batch_min
+            self.zero = _batch_min
 
         target_mask_0 = torch.logical_not(torch.logical_and(target_digit < 0.5, input.le(self.expectation)))
         input_new = torch.where(target_mask_0, input, self.zero)

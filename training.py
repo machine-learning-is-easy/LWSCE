@@ -6,9 +6,9 @@ import torchvision.transforms as transforms
 from torch.utils.data import random_split
 import torch.optim as optim
 import torch.nn as nn
-import torch.nn.functional as F
+
 from loss.lwsce import LabelWiseSignificanceCrossEntropy
-from model_define.defined_model import KMNISTNet, CIFARNet
+
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 import torchvision.models as models
 import os
@@ -34,10 +34,10 @@ model_names = sorted(name for name in models.__dict__
 parser = argparse.ArgumentParser(description='Train Model')
 parser.add_argument('--epoch', '-e', dest='epoch', default=50, help='epoch', required=False)
 parser.add_argument('--dataset', '-d', dest='dataset', default="CIFAR10", help='dataset', required=False)
-parser.add_argument('--opt_alg', '-a', dest='opt_alg', default="SGD", help='opt_alg', required=False)
+parser.add_argument('--opt_alg', '-a', dest='opt_alg', default="ADAM", help='opt_alg', required=False)
 parser.add_argument('--lossfunction', '-l', dest='lossfunction', default="LWSCE", help='LWSCE|CROSSENTROPY|LABELSMOOTHING', 
                     required=False)
-parser.add_argument('--lr', '-lr', dest='lr', type=float, default=1e-4, help='learning rate', required=False)
+parser.add_argument('--lr', '-lr', dest='lr', type=float, default=1e-3, help='learning rate', required=False)
 parser.add_argument('--model', '-m', dest='model', default="googlenet", help='model', required="googlenet|resnet|vit")
 
 
@@ -75,7 +75,6 @@ def define_model(model_type, num_class):
         from vit.vit import ViTForImageClassification
         net = ViTForImageClassification(num_labels=num_class, image_size=image_size)
     elif model_type == 'resnet':
-        from resnet.model import ResNet
         net = resnet18(num_class)
     else:
         raise Exception("Unable to support model type of {}".model_type)
