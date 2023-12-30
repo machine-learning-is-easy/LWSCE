@@ -14,8 +14,10 @@ import torchvision.models as models
 import os
 from model_define.googlenet import googlenet
 from model_define.resnet import resnet18
-from model_define.vit import Vit
-from model_define.vgg import vgg11_bn
+from model_define.densenet import densenet121
+from model_define.mobilenet import mobilenet
+from model_define.vgg import vgg11_bn, vgg13_bn, vgg16_bn, vgg19_bn
+from model_define.wideresidual import wideresnet
 import pandas as pd
 torch.manual_seed(1000)
 torch.cuda.manual_seed(1000)
@@ -39,6 +41,7 @@ parser.add_argument('--lossfunction', '-l', dest='lossfunction', default="LWSCE"
                     required=False)
 parser.add_argument('--lr', '-lr', dest='lr', type=float, default=1e-3, help='learning rate', required=False)
 parser.add_argument('--model', '-m', dest='model', default="googlenet", help='model', required="googlenet|resnet|vit")
+parser.add_argument('--policy', '-p', dest='policy', default="NO", help="NO|ALL|ALC", required=False)
 
 
 args = parser.parse_args()
@@ -68,12 +71,20 @@ def reinitialization_model(model):
             layer.reset_parameters()
 
 
-def define_model(model_type, num_class):
+def define_model(model_type, num_class, image_size):
     if model_type == "googlenet":
         net = googlenet(num_class)
     elif model_type == "vit":
         from vit.vit import ViTForImageClassification
         net = ViTForImageClassification(num_labels=num_class, image_size=image_size)
+    elif model_type == "densenet":
+        net = densenet121(num_class)
+    elif model_type == 'mobilenet':
+        net = mobilenet(class_num=num_class)
+    elif model_type == 'vgg':
+        net = vgg19_bn(num_class)
+    elif model_type == 'wideresnet':
+        net = wideresnet(num_class)
     elif model_type == 'resnet':
         net = resnet18(num_class)
     else:
@@ -118,18 +129,50 @@ elif args.dataset == "CIFAR100":
 else:
     raise Exception("Unable to support the data {}".format(args.dataset))
 
-net = define_model(args.model, dataclasses_num)
+net = define_model(args.model, dataclasses_num, image_size=image_size)
 net = net.to(device)
 
-
+CROSSENTROPY_LOSS = nn.CrossEntropyLoss()
+LABELSOOMTHING_LOSS = nn.CrossEntropyLoss(label_smoothing=0.2)
+LWSCE_LOSS = LabelWiseSignificanceCrossEntropy(alpha=0.2, num_class=dataclasses_num, device=device, input_type="log")
 if args.lossfunction == "LWSCE":
-    criterion = LabelWiseSignificanceCrossEntropy(alpha=0.2, num_class=dataclasses_num, device=device)
+    criterion = LWSCE_LOSS
 elif args.lossfunction == 'CROSSENTROPY':
-    criterion = nn.CrossEntropyLoss()
+    criterion = CROSSENTROPY_LOSS
 elif args.lossfunction == 'LABELSMOOTHING':
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.2)
+    criterion = LABELSOOMTHING_LOSS
 else:
     raise Exception("Unaccept loss function {}".format(args.lossfunction))
+def get_loss(outputs, labels, step):
+    if args.policy == "NO":
+        return criterion(outputs, labels)
+    elif args.policy == "ALC":
+        # alternative LWSCE and CrossEntropy
+        if step % 2 == 0:
+            return LWSCE_LOSS(outputs, labels)
+        else:
+            return CROSSENTROPY_LOSS(outputs, labels)
+    elif args.policy == "ALL":
+        # alternative LWSCE and LabelSmoothing
+        if step % 2 == 0:
+            return LWSCE_LOSS(outputs, labels)
+        else:
+            return LABELSOOMTHING_LOSS(outputs, labels)
+    elif args.policy == "LFL":
+        # alternative LWSCE and LabelSmoothing
+        if step <= 10:
+            return LWSCE_LOSS(outputs, labels)
+        else:
+            return LABELSOOMTHING_LOSS(outputs, labels)
+
+    elif args.policy == "LFC":
+        # alternative LWSCE and LabelSmoothing
+        if step <= 10:
+            return LWSCE_LOSS(outputs, labels)
+        else:
+            return CROSSENTROPY_LOSS(outputs, labels)
+    else:
+        raise Exception("Unable to accept policy parameter {}".format(args.policy))
 
 
 ########################################################################
@@ -205,7 +248,7 @@ for t in range(10):  # train model 10 times
             except Exception as ex:
                 raise Exception("Inference model encounter Exceptions")
 
-            loss = criterion(outputs, labels)
+            loss = get_loss(outputs, labels, step=epoch)
             loss.backward()
             optimizer.step()
             # zero the parameter gradients
@@ -221,7 +264,11 @@ for t in range(10):  # train model 10 times
         acc.append([epoch, acc_epoch, round(running_loss, 2), L2])
         print("{} epoch acc is {}, L2 is {}".format(epoch, acc_epoch, L2))
     print('Finished Training')
-    result_file = os.path.join(os.path.join(current_folder, 'result', '{}_{}_{}_result'.format(args.dataset, args.model, args.lossfunction), "{}.csv".format(str(t))))
+    if args.policy == "NO":
+        folder_name = '{}_{}_{}_result'.format(args.dataset, args.model, args.lossfunction)
+    else:
+        folder_name = '{}_{}_{}_result'.format(args.dataset, args.model, args.policy)
+    result_file = os.path.join(os.path.join(current_folder, 'result', folder_name, "{}.csv".format(str(t))))
     if not os.path.exists(os.path.dirname(result_file)):
         os.makedirs(os.path.dirname(result_file))
     pd.DataFrame(acc).to_csv(result_file, header=["epoch", "training_acc", "training_loss", "L2"], index=False)
@@ -229,7 +276,7 @@ for t in range(10):  # train model 10 times
     # reinitialize the model parameters and optimizer
     del net
     del optimizer
-    net = define_model(args.model, dataclasses_num)
+    net = define_model(args.model, dataclasses_num, image_size=image_size)
     net = net.to(device)
     optimizer = defineopt(net)
     scheduler = define_scheduler(optimizer)
